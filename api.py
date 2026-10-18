@@ -1035,6 +1035,7 @@ async def dashboard():
                             <a class="btn-ghost" href="data:text/html;charset=utf-8,<meta http-equiv='refresh' content='0;url=${s.url}'><script>location.href='${s.url}'</script>" download="${s.quality}_${s.format}.mp4" style="background: rgba(16, 185, 129, 0.2); border-color: #10b981; color: #10b981;">Download Direct</a>
                             <!-- Proxy Download (Uses Render Bandwidth) -->
                             <a class="btn-ghost" href="/proxy?url=${encodeURIComponent(s.url)}&download=true&sub_id=${subjectId}&se=${se}&ep=${ep}&quality=${s.quality}" download>Download Proxy</a>
+                            <button class="btn-ghost" onclick="copyCurl('${s.url}', '${s.quality}')">Copy cURL</button>
                         </div>
                     </div>
                 `).join("");
@@ -1069,6 +1070,11 @@ async def dashboard():
 
         function copyUrl(url) {
             navigator.clipboard.writeText(url).then(() => alert("Stream URL copied to clipboard!"));
+        }
+
+        function copyCurl(url, quality) {
+            const cmd = `curl -L -C - -H "User-Agent: Mozilla/5.0" -H "Referer: https://123moviesfree.club/" -H "Origin: https://123moviesfree.club" -o "${quality}_movie.mp4" "${url}"`;
+            navigator.clipboard.writeText(cmd).then(() => alert("cURL command copied!\n\nPaste it in your terminal to download directly from the CDN.\nRender bandwidth used: 0 MB"));
         }
 
         function switchSubtitle(url) {
@@ -1123,12 +1129,22 @@ def get_episodes(subject_id: str):
 @app.get("/api/stream/{subject_id}")
 def get_streams(subject_id: str, se: int = 0, ep: int = 0, detail_path: Optional[str] = None):
     streams = engine.get_streams(subject_id, season=se, episode=ep, detail_path=detail_path)
+    
+    # Add the exact headers the developer needs to bypass the CDN block locally
+    for stream in streams:
+        stream["required_headers"] = {
+            "User-Agent": "Mozilla/5.0",
+            "Referer": "https://123moviesfree.club/",
+            "Origin": "https://123moviesfree.club"
+        }
+        
     return {
         "subject_id": subject_id,
         "season": se,
         "episode": ep,
         "count": len(streams),
-        "streams": streams
+        "streams": streams,
+        "note": "To download or stream directly without using the Render proxy, send the provided 'required_headers' with your request to the 'url'."
     }
 
 @app.get("/api/stream/{subject_id}/captions")
