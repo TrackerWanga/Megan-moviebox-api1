@@ -1031,8 +1031,10 @@ async def dashboard():
                         </div>
                         <div style="display: flex; gap: 6px;">
                             <button class="btn-ghost" onclick="play('${encodeURIComponent(JSON.stringify(s))}')">Play</button>
-                            <a class="btn-ghost" href="/proxy?url=${encodeURIComponent(s.url)}&download=true&sub_id=${subjectId}&se=${se}&ep=${ep}&quality=${s.quality}" download>Download</a>
-                            <button class="btn-ghost" onclick="copyUrl('/proxy?url=${encodeURIComponent(s.url)}')">Copy Proxy</button>
+                            <!-- Direct CDN Download (Bypasses Render Bandwidth) -->
+                            <a class="btn-ghost" href="data:text/html;charset=utf-8,<meta http-equiv='refresh' content='0;url=${s.url}'><script>location.href='${s.url}'</script>" download="${s.quality}_${s.format}.mp4" style="background: rgba(16, 185, 129, 0.2); border-color: #10b981; color: #10b981;">Download Direct</a>
+                            <!-- Proxy Download (Uses Render Bandwidth) -->
+                            <a class="btn-ghost" href="/proxy?url=${encodeURIComponent(s.url)}&download=true&sub_id=${subjectId}&se=${se}&ep=${ep}&quality=${s.quality}" download>Download Proxy</a>
                         </div>
                     </div>
                 `).join("");
