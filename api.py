@@ -1127,9 +1127,16 @@ def get_episodes(subject_id: str):
     return {"subject_id": subject_id, "seasons": engine.get_episodes(subject_id)}
 
 @app.get("/api/stream/{subject_id}")
-def get_streams(subject_id: str, se: int = 0, ep: int = 0, detail_path: Optional[str] = None):
+def get_streams(
+    subject_id: str,
+    se: int = 0,
+    ep: int = 0,
+    detail_path: Optional[str] = None,
+    quality: Optional[str] = None,   # e.g. "480p", "360p", "1080p", "lowest", "highest"
+    format: Optional[str] = None,    # e.g. "mp4", "dash"
+):
     streams = engine.get_streams(subject_id, season=se, episode=ep, detail_path=detail_path)
-    
+
     # Add the exact headers the developer needs to bypass the CDN block locally
     for stream in streams:
         stream["required_headers"] = {
@@ -1137,14 +1144,57 @@ def get_streams(subject_id: str, se: int = 0, ep: int = 0, detail_path: Optional
             "Referer": "https://123moviesfree.club/",
             "Origin": "https://123moviesfree.club"
         }
-        
+
+    # Build a simplified format list (for easy discovery / UI dropdowns)
+    available_formats = [
+        {
+            "quality": s.get("quality", "unknown"),
+            "quality_value": s.get("quality_value", 0),
+            "format": s.get("format", "unknown"),
+            "size_mb": s.get("size_mb", 0),
+            "codec": s.get("codec"),
+        }
+        for s in streams
+    ]
+
+    # --- Filtering by ?format=mp4 / ?format=dash ---
+    filtered = streams
+    if format:
+        want = format.lower()
+        filtered = [s for s in filtered if s.get("format", "").lower() == want]
+
+    # --- Filtering by ?quality=480p / lowest / highest ---
+    if quality:
+        q = quality.lower()
+        if q == "highest":
+            if filtered:
+                top = max(filtered, key=lambda s: s.get("quality_value", 0))
+                filtered = [top]
+        elif q == "lowest":
+            # Ignore ultra-tiny samples like the 23-second Native CDN clip
+            candidates = [s for s in filtered if (s.get("duration_sec") or 0) > 60]
+            if not candidates:
+                candidates = filtered
+            if candidates:
+                low = min(candidates, key=lambda s: s.get("quality_value", 999))
+                filtered = [low]
+        else:
+            filtered = [s for s in filtered if s.get("quality", "").lower() == q]
+
     return {
         "subject_id": subject_id,
         "season": se,
         "episode": ep,
-        "count": len(streams),
-        "streams": streams,
-        "note": "To download or stream directly without using the Render proxy, send the provided 'required_headers' with your request to the 'url'."
+        "count": len(filtered),
+        "available_formats": available_formats,
+        "applied_filter": {"quality": quality, "format": format} if (quality or format) else None,
+        "streams": filtered,
+        "note": (
+            "Use available_formats to display options to users. "
+            "Add ?quality=480p or ?format=mp4 to filter. "
+            "Use ?quality=lowest for mobile-friendly defaults. "
+            "Send 'required_headers' with requests to the 'url' to bypass CDN."
+        )
     }
 
 @app.get("/api/stream/{subject_id}/captions")
