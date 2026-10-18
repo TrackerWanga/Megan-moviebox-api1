@@ -531,6 +531,20 @@ async def proxy_stream(url: str = Query(...), request: Request = None):
     }
     out_headers["Access-Control-Allow-Origin"] = "*"
 
+    # Handle forced downloads
+    if request and request.query_params.get("download") == "true":
+        sub_id = request.query_params.get("sub_id", "unknown")
+        se = request.query_params.get("se", "0")
+        ep = request.query_params.get("ep", "0")
+        qual = request.query_params.get("quality", "unknown")
+        
+        if se == "0" and ep == "0":
+            filename = f"Movie_{sub_id}_{qual}.mp4"
+        else:
+            filename = f"TV_{sub_id}_S{se}E{ep}_{qual}.mp4"
+            
+        out_headers["Content-Disposition"] = f'attachment; filename="{filename}"'
+
     return StreamingResponse(
         upstream.aiter_raw(chunk_size=65536),
         status_code=upstream.status_code,
@@ -1017,8 +1031,8 @@ async def dashboard():
                         </div>
                         <div style="display: flex; gap: 6px;">
                             <button class="btn-ghost" onclick="play('${encodeURIComponent(JSON.stringify(s))}')">Play</button>
-                            <a class="btn-ghost" href="${s.url}" target="_blank">Open Raw</a>
-                            <button class="btn-ghost" onclick="copyUrl('${s.url}')">Copy</button>
+                            <a class="btn-ghost" href="/proxy?url=${encodeURIComponent(s.url)}&download=true&sub_id=${subjectId}&se=${se}&ep=${ep}&quality=${s.quality}" download>Download</a>
+                            <button class="btn-ghost" onclick="copyUrl('/proxy?url=${encodeURIComponent(s.url)}')">Copy Proxy</button>
                         </div>
                     </div>
                 `).join("");
