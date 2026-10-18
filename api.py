@@ -10,9 +10,10 @@ import time
 from typing import Any, Dict, List, Optional
 from urllib.parse import urlsplit
 
-from fastapi import FastAPI, HTTPException, Query
+from fastapi import FastAPI, HTTPException, Query, Request
 from fastapi.middleware.cors import CORSMiddleware
-from fastapi.responses import HTMLResponse
+from fastapi.responses import HTMLResponse, StreamingResponse
+from starlette.background import BackgroundTask
 
 try:
     from curl_cffi import requests as cr
@@ -505,6 +506,36 @@ class MovieBoxEngine:
         return subs
 
 engine = MovieBoxEngine.get_instance()
+
+# --- PROXY ROUTE ---
+@app.get("/proxy")
+async def proxy_stream(url: str = Query(...), request: Request = None):
+    headers = {
+        "User-Agent": "Mozilla/5.0",
+        "Referer": "https://123moviesfree.club/",
+        "Origin": "https://123moviesfree.club",
+    }
+    if request and "range" in request.headers:
+        headers["Range"] = request.headers["range"]
+
+    client = httpx.AsyncClient(timeout=None, follow_redirects=True)
+    upstream = await client.send(
+        client.build_request("GET", url, headers=headers),
+        stream=True,
+    )
+
+    out_headers = {
+        k: v for k, v in upstream.headers.items()
+        if k.lower() in ("content-type", "content-length", "accept-ranges", "content-range")
+    }
+    out_headers["Access-Control-Allow-Origin"] = "*"
+
+    return StreamingResponse(
+        upstream.aiter_raw(chunk_size=65536),
+        status_code=upstream.status_code,
+        headers=out_headers,
+        background=BackgroundTask(client.aclose),
+    )
 
 @app.get("/", response_class=HTMLResponse)
 async def dashboard():
@@ -1008,8 +1039,15 @@ async def dashboard():
             const container = document.getElementById("playerContainer");
             container.style.display = "flex";
             document.getElementById("playerStatus").textContent = `Playing: ${stream.quality} ${stream.format}`;
-            player.src = stream.url;
-            player.play().catch(() => {});
+            
+            if (stream.format === "DASH") {
+                alert("DASH requires Shaka Player. Please pick an MP4 stream for in-browser playback.");
+                return;
+            }
+
+            // Route through Render's own /proxy route
+            player.src = `/proxy?url=${encodeURIComponent(stream.url)}`;
+            player.play().catch(err => console.error("Playback failed:", err));
         }
 
         function copyUrl(url) {
